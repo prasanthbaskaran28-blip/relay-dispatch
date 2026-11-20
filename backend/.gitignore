@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+# Re-enable only after replacing the token-looking value with a placeholder.
+.env.example
+
+# Logs
+*.log
+npm-debug.log*
+
+# TypeScript
+*.tsbuildinfo
+
+# Generated Prisma files
+/generated/prisma
+
+# Coverage
+coverage/
+
+# Temporary files
+tmp/
+temp/
+.agents/

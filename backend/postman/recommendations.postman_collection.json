@@ -1,0 +1,216 @@
+{
+  "info": {
+    "name": "RELAY Rider Recommendations",
+    "description": "Set the scenario-specific job and rider IDs in the active Postman environment before running these read-only API tests.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "allEligibleJobId", "value": "" },
+    { "key": "unavailableJobId", "value": "" },
+    { "key": "unavailableRiderId", "value": "" },
+    { "key": "insufficientCapacityJobId", "value": "" },
+    { "key": "insufficientCapacityRiderId", "value": "" },
+    { "key": "pickupMismatchJobId", "value": "" },
+    { "key": "pickupMismatchRiderId", "value": "" },
+    { "key": "deliveryMismatchJobId", "value": "" },
+    { "key": "deliveryMismatchRiderId", "value": "" },
+    { "key": "noEligibleJobId", "value": "" },
+    { "key": "nonexistentJobId", "value": "00000000-0000-4000-8000-000000000000" }
+  ],
+  "item": [
+    {
+      "name": "1. All riders eligible",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/jobs/{{allEligibleJobId}}/recommendations"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('returns recommendations with no exclusions', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const result = pm.response.json().data;",
+              "  pm.expect(result.recommendations.length).to.be.greaterThan(0);",
+              "  pm.expect(result.excludedRiders).to.be.empty;",
+              "  pm.expect(result.recommendations[0]).to.have.all.keys('riderId', 'riderName', 'workload', 'maxCapacity', 'reservedCapacity', 'remainingCapacity', 'estimatedTravelTime', 'score', 'reasons');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Rider unavailable",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/jobs/{{unavailableJobId}}/recommendations"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('excludes the unavailable rider with a reason', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const result = pm.response.json().data;",
+              "  const excluded = result.excludedRiders.find((rider) => rider.riderId === pm.variables.get('unavailableRiderId'));",
+              "  pm.expect(excluded).to.exist;",
+              "  pm.expect(excluded.reason.toLowerCase()).to.include('unavailable');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Insufficient capacity",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/jobs/{{insufficientCapacityJobId}}/recommendations"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('excludes the rider with insufficient capacity', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const result = pm.response.json().data;",
+              "  const excluded = result.excludedRiders.find((rider) => rider.riderId === pm.variables.get('insufficientCapacityRiderId'));",
+              "  pm.expect(excluded).to.exist;",
+              "  pm.expect(excluded.reason).to.include('Insufficient remaining capacity');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Pickup zone mismatch",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/jobs/{{pickupMismatchJobId}}/recommendations"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('excludes the rider without pickup-zone support', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const result = pm.response.json().data;",
+              "  const excluded = result.excludedRiders.find((rider) => rider.riderId === pm.variables.get('pickupMismatchRiderId'));",
+              "  pm.expect(excluded).to.exist;",
+              "  pm.expect(excluded.reason).to.include('pickup zone');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Delivery zone mismatch",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/jobs/{{deliveryMismatchJobId}}/recommendations"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('excludes the rider without delivery-zone support', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const result = pm.response.json().data;",
+              "  const excluded = result.excludedRiders.find((rider) => rider.riderId === pm.variables.get('deliveryMismatchRiderId'));",
+              "  pm.expect(excluded).to.exist;",
+              "  pm.expect(excluded.reason).to.include('delivery zone');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. No eligible riders",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/jobs/{{noEligibleJobId}}/recommendations"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('returns empty recommendations and exclusion details', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const result = pm.response.json().data;",
+              "  pm.expect(result.recommendations).to.be.empty;",
+              "  pm.expect(result.excludedRiders.length).to.be.greaterThan(0);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Invalid job ID",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/jobs/not-a-uuid/recommendations"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('rejects an invalid job ID', function () {",
+              "  pm.response.to.have.status(400);",
+              "  pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Nonexistent job ID",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/jobs/{{nonexistentJobId}}/recommendations"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('returns JOB_NOT_FOUND for a valid but nonexistent job ID', function () {",
+              "  pm.response.to.have.status(404);",
+              "  pm.expect(pm.response.json().error.code).to.eql('JOB_NOT_FOUND');",
+              "});"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

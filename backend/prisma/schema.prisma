@@ -1,0 +1,169 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// JOB STATUS
+enum JobStatus {
+  NEW
+  READY_FOR_ASSIGNMENT
+  AWAITING_CONFIRMATION
+  ACCEPTED
+  PICKED_UP
+  DELIVERED
+  MANUAL_QUEUE
+  CANCELLED
+}
+
+// JOB PRIORITY
+enum JobPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+// ASSIGNMENT STATUS
+enum AssignmentStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  COMPLETED
+  REASSIGNED
+  CANCELLED
+}
+
+// RIDER
+model Rider {
+  id          String  @id @default(uuid())
+  name        String
+  phone       String  @unique
+  isAvailable Boolean @default(true)
+
+  maxCapacity      Int
+  reservedCapacity Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  zones       RiderZone[]
+  assignments Assignment[]
+
+  @@index([isAvailable])
+}
+
+// ZONE
+model Zone {
+  id   String @id @default(uuid())
+  name String @unique
+
+  pickupJobs   Job[] @relation("PickupZone")
+  deliveryJobs Job[] @relation("DeliveryZone")
+
+  riders RiderZone[]
+}
+
+// RIDER AND ZONE MAPPING
+model RiderZone {
+  riderId String
+  zoneId  String
+
+  rider Rider @relation(fields: [riderId], references: [id], onDelete: Cascade)
+  zone  Zone  @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+
+  @@id([riderId, zoneId])
+  @@index([zoneId])
+}
+
+// DELIVERY JOB
+model Job {
+  id String @id @default(uuid())
+
+  orderReference String  @unique
+  idempotencyKey String? @unique
+
+  pickupZoneId   String
+  deliveryZoneId String
+
+  requiredCapacity Int
+  priority         JobPriority @default(NORMAL)
+  status           JobStatus   @default(NEW)
+
+  deadline DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  pickupZone   Zone @relation("PickupZone", fields: [pickupZoneId], references: [id])
+  deliveryZone Zone @relation("DeliveryZone", fields: [deliveryZoneId], references: [id])
+
+  assignments Assignment[]
+  events      JobEvent[]
+
+  @@index([status])
+  @@index([pickupZoneId, deliveryZoneId])
+  @@index([createdAt])
+}
+
+// ASSIGNMENT ATTEMPTS
+model Assignment {
+  id String @id @default(uuid())
+
+  jobId            String
+  riderId          String
+  reassignedFromId String?
+
+  status AssignmentStatus @default(PENDING)
+
+  assignedAt           DateTime @default(now())
+  confirmationDeadline DateTime
+
+  confirmedAt DateTime?
+  rejectedAt  DateTime?
+  expiredAt   DateTime?
+
+  rejectionReason    String?
+  reassignmentReason String?
+  overrideReason     String?
+  actor              String  @default("api")
+  idempotencyKey     String? @unique
+
+  capacityReserved Boolean @default(true)
+
+  job            Job          @relation(fields: [jobId], references: [id])
+  rider          Rider        @relation(fields: [riderId], references: [id])
+  reassignedFrom Assignment?  @relation("AssignmentReassignment", fields: [reassignedFromId], references: [id], onDelete: Restrict)
+  reassignments  Assignment[] @relation("AssignmentReassignment")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([jobId])
+  @@index([riderId])
+  @@index([reassignedFromId])
+  @@index([status, confirmationDeadline])
+}
+
+// JOB AUDIT HISTORY
+model JobEvent {
+  id String @id @default(uuid())
+
+  jobId         String
+  eventType     String
+  idempotencyKey String?
+  actor         String
+  description   String
+  details       Json?
+
+  createdAt DateTime @default(now())
+
+  job Job @relation(fields: [jobId], references: [id])
+
+  @@index([jobId, createdAt])
+  @@unique([jobId, eventType, idempotencyKey])
+}

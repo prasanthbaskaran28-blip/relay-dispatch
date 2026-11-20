@@ -1,0 +1,841 @@
+{
+  "info": {
+    "name": "RELAY Assignments and Reassignments",
+    "description": "Set the fixture IDs in collection variables before running. Prepare an unassigned job and eligible top-ranked rider for assignJobId, a below-ranked eligible rider for belowRankedJobId, and dedicated unavailable/capacity/zone-mismatch fixtures. acceptedJobId must have an ACCEPTED assignment; pickedUpJobId, deliveredJobId, and cancelledJobId must be in those states. The concurrent rider must have enough capacity for exactly one of the two concurrent jobs. POST requests require Idempotency-Key headers.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "invalidJobId", "value": "not-a-uuid" },
+    { "key": "nonexistentJobId", "value": "00000000-0000-4000-8000-000000000000" },
+    { "key": "assignJobId", "value": "" },
+    { "key": "topRiderId", "value": "" },
+    { "key": "requiredCapacity", "value": "1" },
+    { "key": "originalReservedCapacityBefore", "value": "0" },
+    { "key": "assignmentKey", "value": "assign-top-001" },
+    { "key": "unknownRiderId", "value": "00000000-0000-4000-8000-000000000001" },
+    { "key": "belowRankedJobId", "value": "" },
+    { "key": "belowRankedRiderId", "value": "" },
+    { "key": "unavailableJobId", "value": "" },
+    { "key": "unavailableRiderId", "value": "" },
+    { "key": "capacityJobId", "value": "" },
+    { "key": "capacityRiderId", "value": "" },
+    { "key": "pickupMismatchJobId", "value": "" },
+    { "key": "pickupMismatchRiderId", "value": "" },
+    { "key": "deliveryMismatchJobId", "value": "" },
+    { "key": "deliveryMismatchRiderId", "value": "" },
+    { "key": "reassignRiderId", "value": "" },
+    { "key": "reassignRiderReservedCapacityBefore", "value": "0" },
+    { "key": "failedReassignJobId", "value": "" },
+    { "key": "failedReassignAssignmentId", "value": "" },
+    { "key": "failedReassignRiderId", "value": "" },
+    { "key": "acceptedJobId", "value": "" },
+    { "key": "acceptedAssignmentId", "value": "" },
+    { "key": "acceptedTargetRiderId", "value": "" },
+    { "key": "acceptedReassignmentKey", "value": "accepted-reassign-001" },
+    { "key": "pickedUpJobId", "value": "" },
+    { "key": "pickedUpAssignmentId", "value": "" },
+    { "key": "pickedUpTargetRiderId", "value": "" },
+    { "key": "deliveredJobId", "value": "" },
+    { "key": "deliveredAssignmentId", "value": "" },
+    { "key": "deliveredTargetRiderId", "value": "" },
+    { "key": "cancelledJobId", "value": "" },
+    { "key": "cancelledAssignmentId", "value": "" },
+    { "key": "cancelledTargetRiderId", "value": "" },
+    { "key": "concurrentJobIdOne", "value": "" },
+    { "key": "concurrentJobIdTwo", "value": "" },
+    { "key": "concurrentRiderId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. Assign top-ranked rider",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Idempotency-Key", "value": "{{assignmentKey}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"riderId\":\"{{topRiderId}}\"}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": "{{baseUrl}}/api/jobs/{{assignJobId}}/assignments"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('creates a pending assignment and reserves capacity', function () {",
+              "  pm.response.to.have.status(201);",
+              "  const assignment = pm.response.json().data;",
+              "  pm.expect(assignment.status).to.eql('PENDING');",
+              "  pm.expect(assignment.capacityReserved).to.eql(true);",
+              "  pm.expect(assignment.actor).to.eql('api');",
+              "  pm.expect(assignment.idempotencyKey).to.be.undefined;",
+              "  pm.collectionVariables.set('createdAssignmentId', assignment.id);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Duplicate assignment request",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Idempotency-Key", "value": "{{assignmentKey}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"riderId\":\"{{topRiderId}}\"}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": "{{baseUrl}}/api/jobs/{{assignJobId}}/assignments"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('replays the original assignment without reserving twice', function () {",
+              "  pm.response.to.have.status(200);",
+              "  pm.expect(pm.response.json().data.id).to.eql(pm.collectionVariables.get('createdAssignmentId'));",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2a. Verify assignment reservation",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/riders/{{topRiderId}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('capacity was reserved exactly once', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const rider = pm.response.json().data;",
+              "  pm.expect(rider.workload.reservedCapacity).to.eql(Number(pm.collectionVariables.get('originalReservedCapacityBefore')) + Number(pm.collectionVariables.get('requiredCapacity')));",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2b. Prevent another active assignment",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Idempotency-Key", "value": "second-assignment-001" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"riderId\":\"{{topRiderId}}\"}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": "{{baseUrl}}/api/jobs/{{assignJobId}}/assignments"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('rejects a second active assignment for the same job', function () {",
+              "  pm.response.to.have.status(409);",
+              "  pm.expect(pm.response.json().error.code).to.eql('JOB_ALREADY_ASSIGNED');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2c. Invalid job ID",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Idempotency-Key", "value": "invalid-job-001" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"riderId\":\"{{topRiderId}}\"}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": "{{baseUrl}}/api/jobs/{{invalidJobId}}/assignments"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('rejects invalid job UUID', function () {",
+              "  pm.response.to.have.status(400);",
+              "  pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2d. Nonexistent job ID",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Idempotency-Key", "value": "nonexistent-job-001" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"riderId\":\"{{topRiderId}}\"}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": "{{baseUrl}}/api/jobs/{{nonexistentJobId}}/assignments"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('returns job not found for a valid nonexistent job UUID', function () {",
+              "  pm.response.to.have.status(404);",
+              "  pm.expect(pm.response.json().error.code).to.eql('JOB_NOT_FOUND');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Below-ranked rider requires override reason",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Idempotency-Key", "value": "override-missing-001" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"riderId\":\"{{belowRankedRiderId}}\"}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": "{{baseUrl}}/api/jobs/{{belowRankedJobId}}/assignments"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('rejects override without a reason', function () {",
+              "  pm.response.to.have.status(400);",
+              "  pm.expect(pm.response.json().error.code).to.eql('OVERRIDE_REASON_REQUIRED');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Below-ranked rider with override reason",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Idempotency-Key", "value": "override-reason-001" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"riderId\":\"{{belowRankedRiderId}}\",\"overrideReason\":\"Dispatcher selected based on operational context\"}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": "{{baseUrl}}/api/jobs/{{belowRankedJobId}}/assignments"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('records the override reason and actor', function () {",
+              "  pm.response.to.have.status(201);",
+              "  const assignment = pm.response.json().data;",
+              "  pm.expect(assignment.overrideReason).to.be.a('string').and.not.empty;",
+              "  pm.expect(assignment.actor).to.eql('api');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Unavailable rider is rejected",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Idempotency-Key", "value": "unavailable-rider-001" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"riderId\":\"{{unavailableRiderId}}\"}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": "{{baseUrl}}/api/jobs/{{unavailableJobId}}/assignments"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('rejects unavailable rider', function () {",
+              "  pm.response.to.have.status(409);",
+              "  pm.expect(pm.response.json().error.code).to.eql('RIDER_NOT_ELIGIBLE');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Insufficient capacity is rejected",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Idempotency-Key", "value": "insufficient-capacity-001" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"riderId\":\"{{capacityRiderId}}\"}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": "{{baseUrl}}/api/jobs/{{capacityJobId}}/assignments"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('rejects rider with insufficient remaining capacity', function () {",
+              "  pm.response.to.have.status(409);",
+              "  pm.expect(pm.response.json().error.code).to.eql('RIDER_NOT_ELIGIBLE');",
+              "  pm.expect(pm.response.json().error.message).to.include('Insufficient remaining capacity');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Pickup zone mismatch is rejected",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Idempotency-Key", "value": "pickup-mismatch-001" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"riderId\":\"{{pickupMismatchRiderId}}\"}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": "{{baseUrl}}/api/jobs/{{pickupMismatchJobId}}/assignments"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('rejects rider without pickup-zone support', function () {",
+              "  pm.response.to.have.status(409);",
+              "  pm.expect(pm.response.json().error.message).to.include('pickup zone');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Delivery zone mismatch is rejected",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Idempotency-Key", "value": "delivery-mismatch-001" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"riderId\":\"{{deliveryMismatchRiderId}}\"}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": "{{baseUrl}}/api/jobs/{{deliveryMismatchJobId}}/assignments"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('rejects rider without delivery-zone support', function () {",
+              "  pm.response.to.have.status(409);",
+              "  pm.expect(pm.response.json().error.message).to.include('delivery zone');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "8a. Nonexistent rider is rejected",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Idempotency-Key", "value": "unknown-rider-001" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"riderId\":\"{{unknownRiderId}}\"}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": "{{baseUrl}}/api/jobs/{{pickupMismatchJobId}}/assignments"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('returns rider not found for a valid nonexistent rider ID', function () {",
+              "  pm.response.to.have.status(404);",
+              "  pm.expect(pm.response.json().error.code).to.eql('RIDER_NOT_FOUND');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "9. Reassign pending assignment",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Idempotency-Key", "value": "reassign-pending-001" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"assignmentId\":\"{{createdAssignmentId}}\",\"riderId\":\"{{reassignRiderId}}\",\"reassignmentReason\":\"Dispatch balancing\",\"overrideReason\":\"Dispatcher selected replacement\"}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": "{{baseUrl}}/api/jobs/{{assignJobId}}/reassignments"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('preserves old assignment and creates a pending replacement', function () {",
+              "  pm.response.to.have.status(201);",
+              "  const assignment = pm.response.json().data;",
+              "  pm.expect(assignment.status).to.eql('PENDING');",
+              "  pm.expect(assignment.reassignedFromId).to.eql(pm.collectionVariables.get('createdAssignmentId'));",
+              "  pm.expect(assignment.reassignedFrom.status).to.eql('REASSIGNED');",
+              "  pm.collectionVariables.set('replacementAssignmentId', assignment.id);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "9a. Duplicate reassignment request",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Idempotency-Key", "value": "reassign-pending-001" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"assignmentId\":\"{{createdAssignmentId}}\",\"riderId\":\"{{reassignRiderId}}\",\"reassignmentReason\":\"Dispatch balancing\",\"overrideReason\":\"Dispatcher selected replacement\"}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": "{{baseUrl}}/api/jobs/{{assignJobId}}/reassignments"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('replays reassignment without another capacity update', function () {",
+              "  pm.response.to.have.status(200);",
+              "  pm.expect(pm.response.json().data.id).to.eql(pm.collectionVariables.get('replacementAssignmentId'));",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "9b. Verify reassignment capacity changes",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/riders/{{reassignRiderId}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('old capacity was released and new capacity reserved', function () {",
+              "  pm.response.to.have.status(200);",
+              "  pm.expect(pm.response.json().data.workload.reservedCapacity).to.eql(Number(pm.collectionVariables.get('reassignRiderReservedCapacityBefore')) + Number(pm.collectionVariables.get('requiredCapacity')));",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "9c. Verify previous rider capacity release",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/riders/{{topRiderId}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('previous rider reservation was released', function () {",
+              "  pm.response.to.have.status(200);",
+              "  pm.expect(pm.response.json().data.workload.reservedCapacity).to.eql(Number(pm.collectionVariables.get('originalReservedCapacityBefore')));",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "10. Accepted reassignment requires reason",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Idempotency-Key", "value": "accepted-reassign-no-reason-001" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"assignmentId\":\"{{acceptedAssignmentId}}\",\"riderId\":\"{{acceptedTargetRiderId}}\"}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": "{{baseUrl}}/api/jobs/{{acceptedJobId}}/reassignments"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('requires reason when replacing accepted assignment', function () {",
+              "  pm.response.to.have.status(400);",
+              "  pm.expect(pm.response.json().error.code).to.eql('REASSIGNMENT_REASON_REQUIRED');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "10a. Accepted assignment reassignment succeeds with reason",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Idempotency-Key", "value": "{{acceptedReassignmentKey}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"assignmentId\":\"{{acceptedAssignmentId}}\",\"riderId\":\"{{acceptedTargetRiderId}}\",\"reassignmentReason\":\"Accepted job requires a dispatch change\",\"overrideReason\":\"Dispatcher selection\"}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": "{{baseUrl}}/api/jobs/{{acceptedJobId}}/reassignments"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('reassigns accepted assignment and records its reason', function () {",
+              "  pm.response.to.have.status(201);",
+              "  const assignment = pm.response.json().data;",
+              "  pm.expect(assignment.status).to.eql('PENDING');",
+              "  pm.expect(assignment.reassignmentReason).to.be.a('string').and.not.empty;",
+              "  pm.expect(assignment.reassignedFrom.status).to.eql('REASSIGNED');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "11. Reassignment blocked after pickup",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Idempotency-Key", "value": "reassign-picked-up-001" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"assignmentId\":\"{{pickedUpAssignmentId}}\",\"riderId\":\"{{pickedUpTargetRiderId}}\",\"reassignmentReason\":\"Test\"}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": "{{baseUrl}}/api/jobs/{{pickedUpJobId}}/reassignments"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('blocks reassignment after pickup', function () {",
+              "  pm.response.to.have.status(409);",
+              "  pm.expect(pm.response.json().error.code).to.eql('JOB_NOT_REASSIGNABLE');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "11a. Reassignment blocked after delivery",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Idempotency-Key", "value": "reassign-delivered-001" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"assignmentId\":\"{{deliveredAssignmentId}}\",\"riderId\":\"{{deliveredTargetRiderId}}\",\"reassignmentReason\":\"Test\"}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": "{{baseUrl}}/api/jobs/{{deliveredJobId}}/reassignments"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('blocks reassignment after delivery', function () {",
+              "  pm.response.to.have.status(409);",
+              "  pm.expect(pm.response.json().error.code).to.eql('JOB_NOT_REASSIGNABLE');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "11b. Reassignment blocked after cancellation",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Idempotency-Key", "value": "reassign-cancelled-001" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"assignmentId\":\"{{cancelledAssignmentId}}\",\"riderId\":\"{{cancelledTargetRiderId}}\",\"reassignmentReason\":\"Test\"}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": "{{baseUrl}}/api/jobs/{{cancelledJobId}}/reassignments"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('blocks reassignment after cancellation', function () {",
+              "  pm.response.to.have.status(409);",
+              "  pm.expect(pm.response.json().error.code).to.eql('JOB_NOT_REASSIGNABLE');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "11c. Failed reassignment leaves assignment active",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Idempotency-Key", "value": "reassign-ineligible-001" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"assignmentId\":\"{{failedReassignAssignmentId}}\",\"riderId\":\"{{failedReassignRiderId}}\",\"reassignmentReason\":\"Test failed reassignment\",\"overrideReason\":\"Dispatcher selection\"}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": "{{baseUrl}}/api/jobs/{{failedReassignJobId}}/reassignments"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('rejects invalid new rider and rolls back reassignment', function () {",
+              "  pm.response.to.have.status(409);",
+              "  pm.expect(pm.response.json().error.code).to.eql('RIDER_NOT_ELIGIBLE');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "11d. Verify failed reassignment rollback",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/jobs/{{failedReassignJobId}}/assignments"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('old assignment remains active after failed reassignment', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const oldAssignment = pm.response.json().data.find((item) => item.id === pm.collectionVariables.get('failedReassignAssignmentId'));",
+              "  pm.expect(oldAssignment).to.exist;",
+              "  pm.expect(oldAssignment.status).to.be.oneOf(['PENDING', 'ACCEPTED']);",
+              "  pm.expect(oldAssignment.capacityReserved).to.eql(true);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "12. Assignment history preserves records",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/jobs/{{assignJobId}}/assignments"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('returns both original and reassigned assignment history', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const assignments = pm.response.json().data;",
+              "  pm.expect(assignments.some((item) => item.id === pm.collectionVariables.get('createdAssignmentId') && item.status === 'REASSIGNED')).to.eql(true);",
+              "  pm.expect(assignments.some((item) => item.id === pm.collectionVariables.get('replacementAssignmentId') && item.status === 'PENDING')).to.eql(true);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "13. Assignment details",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/assignments/{{replacementAssignmentId}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('returns assignment, job, rider, and reassignment lineage', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const assignment = pm.response.json().data;",
+              "  pm.expect(assignment.job.id).to.eql(pm.collectionVariables.get('assignJobId'));",
+              "  pm.expect(assignment.rider.id).to.eql(pm.collectionVariables.get('reassignRiderId'));",
+              "  pm.expect(assignment.reassignedFrom.id).to.eql(pm.collectionVariables.get('createdAssignmentId'));",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "14. Concurrent capacity contention",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/health"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const baseUrl = pm.collectionVariables.get('baseUrl');",
+              "const riderId = pm.collectionVariables.get('concurrentRiderId');",
+              "const contentType = 'application/json';",
+              "const requestFor = (jobId, key) => ({",
+              "  url: `${baseUrl}/api/jobs/${jobId}/assignments`,",
+              "  method: 'POST',",
+              "  header: { 'Content-Type': contentType, 'Idempotency-Key': key },",
+              "  body: { mode: 'raw', raw: JSON.stringify({ riderId, overrideReason: 'Concurrent capacity test' }) }",
+              "});",
+              "const jobs = [pm.collectionVariables.get('concurrentJobIdOne'), pm.collectionVariables.get('concurrentJobIdTwo')];",
+              "Promise.all(jobs.map((jobId, index) => new Promise((resolve) => pm.sendRequest(requestFor(jobId, `concurrent-${index}-${Date.now()}`), (error, response) => resolve({ error, response }))))).then((results) => {",
+              "  pm.test('concurrent requests cannot overbook rider capacity', function () {",
+              "    pm.expect(results.filter((item) => item.response && item.response.code === 201)).to.have.length(1);",
+              "    pm.expect(results.filter((item) => item.response && item.response.code === 409)).to.have.length(1);",
+              "  });",
+              "});"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
